@@ -94,20 +94,24 @@ class Beam:
         ビーム画像Surfaceを生成する
         引数 bird：ビームを放つこうかとん（Birdインスタンス）
         """
+        # ビーム画像の初期化。ここでは一旦 fig/beam.png を使っている
         self.img = pg.image.load(f"fig/beam.png")  # ビームSurface
         self.rct = self.img.get_rect()  # ビームRect
         self.rct.centery = bird.rct.centery  # こうかとんの中心縦座標
         self.rct.left = bird.rct.right  # こうかとんの右座標
         self.vx, self.vy = +5, 0
 
-    def update(self, screen: pg.Surface):
+    def update(self, screen: pg.Surface) -> bool:
         """
         ビームを速度ベクトルself.vx, self.vyに基づき移動させる
         引数 screen：画面Surface
         """
+        self.rct.move_ip(self.vx, self.vy)
         if check_bound(self.rct) == (True, True):
-            self.rct.move_ip(self.vx, self.vy)
-            screen.blit(self.img, self.rct)    
+            screen.blit(self.img, self.rct)
+            return True # 画面内
+        else:
+            return False # 画面外  
 
 class Bomb:
     """
@@ -143,10 +147,11 @@ class Score: #Scoreクラスの定義
     """
     スコアに関するクラス
     """
-    def __init__(self):
+    def __init__(self, color=(0, 0, 255)): # 0, 0, 255 は青
         self.fonto = pg.font.SysFont("hgp創英角ポップ体", 30)  # フォントの設定
-        self.color = (0, 0, 255)  # フォントの色を青に設定
+        self.color = color  # フォントの色
         self.score = 0  # スコアの初期値を0に設定
+        # scoreの文字列が "score: " ではなく "スコア: " で初期化されている点も修正
         self.img = self.fonto.render(f"スコア: {self.score}", 0, self.color)  # 文字列Surfaceの生成
         self.rct = self.img.get_rect()
         self.rct.bottomleft = (10, HEIGHT - 50)  # 左下座標に設定
@@ -167,8 +172,11 @@ def main():
     #     bombs.append(bomb)
     bombs = [Bomb((255, 0, 0), 10) for _ in range(NUM_OF_BOMBS)]
 
-    beam = None  # ゲーム初期化時にはビームは存在しない
-    score=Score()
+
+    beams = []  # 複数のビームを管理するためのリストを初期化する
+    
+    score = Score() # Scoreクラスのインスタンスを生成する
+
     clock = pg.time.Clock()
     tmr = 0
     while True:
@@ -177,7 +185,7 @@ def main():
                 return
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                 # スペースキー押下でBeamクラスのインスタンス生成
-                beam = Beam(bird)            
+                beams.append(Beam(bird))             
         screen.blit(bg_img, [0, 0])
         
         for bomb in bombs:
@@ -191,21 +199,36 @@ def main():
                 time.sleep(1)
                 return
         
-        for b, bomb in enumerate(bombs):
-            if beam is not None:
+        for b_idx, beam in enumerate(beams):
+            for bo_idx, bomb in enumerate(bombs):
+                if bomb is None:
+                    continue
                 if beam.rct.colliderect(bomb.rct):
-                    # ビームと爆弾の衝突判定
-                    beam, bombs[b] = None, None
+                    # 衝突したらビームと爆弾をNoneにする
+                    beams[b_idx] = None
+                    bombs[bo_idx] = None
                     bird.change_img(6, screen)
                     score.score+=1
+                    break # 爆弾が破壊されたら、次のビームの処理へ
+        
+
         bombs = [bomb for bomb in bombs if bomb is not None]
 
         key_lst = pg.key.get_pressed()
         bird.update(key_lst, screen)
-        if beam is not None:
-            beam.update(screen)   
+        
+        # for b_idx, beam in enumerate(beams): を使うため beams が None でないことを確認する処理を削除
+        for b_idx, beam in enumerate(beams):
+            if beam is not None:
+                if not beam.update(screen): # 画面外に出たら False
+                    beams[b_idx] = None # 画面外に出たビームをNoneにする
+        
+
+        beams = [beam for beam in beams if beam is not None]
+        
         for bomb in bombs:
             bomb.update(screen)
+        
         score.update(screen)
         pg.display.update()
         tmr += 1
@@ -214,6 +237,8 @@ def main():
 
 if __name__ == "__main__":
     pg.init()
+
+    pg.font.init()
     main()
     pg.quit()
     sys.exit()
